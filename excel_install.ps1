@@ -90,7 +90,8 @@ if ($install.ExitCode -eq 0) {
 
 Write-Step "Applying Excel settings to all user profiles"
 
-$relPath = "Software\Microsoft\Office\16.0\Excel\Security"
+$securityPath      = "Software\Microsoft\Office\16.0\Excel\Security"
+$protectedViewPath = "Software\Microsoft\Office\16.0\Excel\Security\ProtectedView"
 
 $settings = @{
     "VBAWarnings"                = 1
@@ -147,8 +148,6 @@ foreach ($profile in $profiles) {
             "DisableAttachmentsInPV",
             "DisableUnsafeLocationsInPV"
         )
-        $securityPath      = "Software\Microsoft\Office\16.0\Excel\Security"
-        $protectedViewPath = "Software\Microsoft\Office\16.0\Excel\Security\ProtectedView"
         $securityKey = "Registry::HKEY_USERS\$sid\$securityPath"
         $pvKey       = "Registry::HKEY_USERS\$sid\$protectedViewPath"
 
