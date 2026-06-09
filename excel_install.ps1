@@ -9,15 +9,15 @@
 
 #Requires -RunAsAdministrator
 
-# ── Colours for console output ───────────────────────────────
-function Write-Step  { param($msg) Write-Host "`n== $msg" -ForegroundColor Cyan    }
-function Write-OK    { param($msg) Write-Host "   [OK] $msg"   -ForegroundColor Green   }
-function Write-Warn  { param($msg) Write-Host "   [!!] $msg"   -ForegroundColor Yellow  }
-function Write-Fail  { param($msg) Write-Host "   [XX] $msg"   -ForegroundColor Red     }
+# Colours for console output
+function Write-Step { param($msg) Write-Host "`n== $msg" -ForegroundColor Cyan }
+function Write-OK   { param($msg) Write-Host "   [OK] $msg" -ForegroundColor Green }
+function Write-Warn { param($msg) Write-Host "   [!!] $msg" -ForegroundColor Yellow }
+function Write-Fail { param($msg) Write-Host "   [XX] $msg" -ForegroundColor Red }
 
 
 # ============================================================
-# PART 1 — INSTALL EXCEL VIA OFFICE DEPLOYMENT TOOL
+# PART 1 - INSTALL EXCEL VIA OFFICE DEPLOYMENT TOOL
 # ============================================================
 
 Write-Step "Preparing Office Deployment Tool"
@@ -27,7 +27,7 @@ $odtExe    = "$odtPath\setup.exe"
 $configXml = "$odtPath\install.xml"
 $odtUrl    = "https://download.microsoft.com/download/2/7/A/27AF1BE6-DD20-4CB4-B154-EBAB8A7D4A7E/officedeploymenttool_18129-20030.exe"
 
-New-Item -ItemType Directory -Force -Path $odtPath       | Out-Null
+New-Item -ItemType Directory -Force -Path $odtPath        | Out-Null
 New-Item -ItemType Directory -Force -Path "$odtPath\Logs" | Out-Null
 
 # Download ODT
@@ -45,8 +45,8 @@ Write-Host "   Extracting ODT..."
 Start-Process "$odtPath\odt.exe" -ArgumentList "/quiet /extract:$odtPath" -Wait
 Write-OK "ODT extracted"
 
-# Build XML config — Excel only, everything else excluded
-@"
+# Build XML config - Excel only, everything else excluded
+$xmlContent = @"
 <Configuration>
   <Add OfficeClientEdition="64" Channel="Current">
     <Product ID="O365ProPlusRetail">
@@ -66,7 +66,8 @@ Write-OK "ODT extracted"
   <Display Level="None" AcceptEULA="TRUE" />
   <Logging Level="Standard" Path="C:\ODT\Logs" />
 </Configuration>
-"@ | Set-Content $configXml
+"@
+Set-Content -Path $configXml -Value $xmlContent
 Write-OK "Install config written"
 
 # Run silent install
@@ -75,48 +76,36 @@ $install = Start-Process $odtExe -ArgumentList "/configure `"$configXml`"" -Wait
 if ($install.ExitCode -eq 0) {
     Write-OK "Excel installed successfully (exit code 0)"
 } else {
-    Write-Warn "Installer finished with exit code $($install.ExitCode) — check C:\ODT\Logs for details"
+    Write-Warn "Installer finished with exit code $($install.ExitCode) - check C:\ODT\Logs for details"
 }
 
 
 # ============================================================
-# PART 2 — APPLY SETTINGS TO ALL USER PROFILES
+# PART 2 - APPLY SETTINGS TO ALL USER PROFILES
 # ============================================================
 # Strategy:
-#   - For currently LOADED hives  → write directly to HKU\<SID>
-#   - For NOT YET LOADED hives    → load the NTUSER.DAT, write, then unload
-#
-# This covers every profile that exists on the machine at the
-# time the script runs, regardless of whether the user is logged in.
+#   - For currently LOADED hives  -> write directly to HKU\<SID>
+#   - For NOT YET LOADED hives    -> load NTUSER.DAT, write, then unload
 # ============================================================
 
 Write-Step "Applying Excel settings to all user profiles"
 
-# Registry path relative to each user's hive root
 $relPath = "Software\Microsoft\Office\16.0\Excel\Security"
 
-# Settings to apply
 $settings = @{
-    # Enable ALL macros — no prompt
-    "VBAWarnings"               = 1
-    # Disable Protected View for internet / attachment / unsafe-path files
+    "VBAWarnings"                = 1
     "DisableInternetFilesInPV"   = 1
     "DisableAttachmentsInPV"     = 1
     "DisableUnsafeLocationsInPV" = 1
 }
 
-# Grab all real user profiles (skip system accounts)
-$excludedSids = @(
-    "S-1-5-18",   # SYSTEM
-    "S-1-5-19",   # LOCAL SERVICE
-    "S-1-5-20"    # NETWORK SERVICE
-)
+$excludedSids = @("S-1-5-18", "S-1-5-19", "S-1-5-20")
 
 $profiles = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
     Where-Object { $_.PSChildName -notin $excludedSids -and $_.PSChildName -like "S-1-5-21-*" }
 
 if (-not $profiles) {
-    Write-Warn "No user profiles found — nothing to configure."
+    Write-Warn "No user profiles found - nothing to configure."
     exit 0
 }
 
@@ -128,31 +117,28 @@ foreach ($profile in $profiles) {
 
     Write-Host "`n   Profile : $username ($sid)"
 
-    # ── Check if this hive is already loaded in HKU ──────────
-    $hiveLoaded    = Test-Path "Registry::HKEY_USERS\$sid"
-    $weLoadedIt    = $false
+    $hiveLoaded = Test-Path "Registry::HKEY_USERS\$sid"
+    $weLoadedIt = $false
 
     if (-not $hiveLoaded) {
         if (Test-Path $ntuser) {
-            # Load the hive temporarily under HKU\<SID>
             $null = reg load "HKU\$sid" $ntuser 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $hiveLoaded = $true
                 $weLoadedIt = $true
                 Write-Host "   Hive loaded from NTUSER.DAT"
             } else {
-                Write-Warn "Could not load hive for $username — skipping (user may be locked/in use)"
+                Write-Warn "Could not load hive for $username - skipping (user may be locked/in use)"
                 continue
             }
         } else {
-            Write-Warn "NTUSER.DAT not found at $ntuser — skipping"
+            Write-Warn "NTUSER.DAT not found at $ntuser - skipping"
             continue
         }
     } else {
         Write-Host "   Hive already loaded (user is logged in)"
     }
 
-    # ── Write settings ────────────────────────────────────────
     try {
         $regBase = "Registry::HKEY_USERS\$sid\$relPath"
 
@@ -170,15 +156,14 @@ foreach ($profile in $profiles) {
         Write-Fail "Error applying settings for $username : $_"
 
     } finally {
-        # ── Unload hive if WE loaded it ───────────────────────
         if ($weLoadedIt) {
-            [GC]::Collect()          # release any handles PowerShell is holding
+            [GC]::Collect()
             Start-Sleep -Milliseconds 500
             $null = reg unload "HKU\$sid" 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "   Hive unloaded cleanly"
             } else {
-                Write-Warn "Could not unload hive for $username — it may remain loaded until reboot"
+                Write-Warn "Could not unload hive for $username - it may remain loaded until reboot"
             }
         }
     }
