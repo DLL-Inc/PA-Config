@@ -94,10 +94,12 @@ $relPath = "Software\Microsoft\Office\16.0\Excel\Security"
 
 $settings = @{
     "VBAWarnings"                = 1
-    "DisableInternetFilesInPV"   = 1
-    "DisableAttachmentsInPV"     = 1
-    "DisableUnsafeLocationsInPV" = 1
 }
+$pvSettings = @(
+    "DisableInternetFilesInPV",
+    "DisableAttachmentsInPV",
+    "DisableUnsafeLocationsInPV"
+)
 
 $excludedSids = @("S-1-5-18", "S-1-5-19", "S-1-5-20")
 
@@ -140,14 +142,33 @@ foreach ($profile in $profiles) {
     }
 
     try {
-        $regBase = "Registry::HKEY_USERS\$sid\$relPath"
+        $pvSettings = @(
+            "DisableInternetFilesInPV",
+            "DisableAttachmentsInPV",
+            "DisableUnsafeLocationsInPV"
+        )
+        $securityPath      = "Software\Microsoft\Office\16.0\Excel\Security"
+        $protectedViewPath = "Software\Microsoft\Office\16.0\Excel\Security\ProtectedView"
+        $securityKey = "Registry::HKEY_USERS\$sid\$securityPath"
+        $pvKey       = "Registry::HKEY_USERS\$sid\$protectedViewPath"
 
-        if (!(Test-Path $regBase)) {
-            New-Item -Path $regBase -Force | Out-Null
+        if (!(Test-Path $securityKey)) {
+            New-Item -Path $securityKey -Force | Out-Null
+        }
+        if (!(Test-Path $pvKey)) {
+            New-Item -Path $pvKey -Force | Out-Null
         }
 
         foreach ($name in $settings.Keys) {
-            Set-ItemProperty -Path $regBase -Name $name -Value $settings[$name] -Type DWord -ErrorAction Stop
+            Set-ItemProperty -Path $securityKey -Name $name -Value $settings[$name] -Type DWord -ErrorAction Stop
+        }
+        foreach ($name in $pvSettings) {
+            New-ItemProperty `
+                -Path $pvKey `
+                -Name $name `
+                -Value 1 `
+                -PropertyType DWord `
+                -Force | Out-Null
         }
 
         Write-OK "Settings applied for $username"
