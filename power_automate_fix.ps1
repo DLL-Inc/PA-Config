@@ -25,7 +25,7 @@ function Write-Fail { param($msg) Write-Host "   [XX] $msg" -ForegroundColor Red
 $keepDays = 1
 
 # The folder where Power Automate stores run files
-$runsFolder = "C:\ProgramData\Microsoft\Power Automate Desktop\Runs"
+$runsFolder = "$env:ProgramData\Microsoft\Power Automate Desktop\Runs"
 
 # Name for the scheduled task
 $taskName = "PowerAutomate-RunFiles-Cleanup"
